@@ -44,10 +44,12 @@ INSTALLED_APPS = [
     'chat'
 ]
 
-AUTHENTICATION_BACKENDS = [
-    'django.contrib.auth.backends.ModelBackend',
-    'rest_framework.authentication.TokenAuthentication',
-]
+
+REST_FRAMEWORK = {
+    'DEFAULT_AUTHENTICATION_CLASSES': [
+        'rest_framework.authentication.TokenAuthentication',
+    ]
+}
 
 
 MIDDLEWARE = [

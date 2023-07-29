@@ -9,10 +9,35 @@ from chat.models import ChatRoom, Message
 from chat.serializers import ChatRoomSerializer, MessageSerializer
 from chat.utils.objects import ChatroomType, MessageType
 
-class ListChatrooms(ListAPIView):
-    permission_classes = (IsAuthenticated,)
-    serializer_class = ChatRoomSerializer
-    queryset = ChatRoom.objects.all()
+class ListChatrooms(APIView):
+    permission_classes = [IsAuthenticated]
+    
+    def get(self, request):
+        chatrooms = ChatRoom.objects.all().order_by('-last_message_date')
+        response = []
+        # chatrooms_data = ChatroomSerializers(chatrooms, many=True).data
+        user = self.request.user
+        unread_messages = Message.objects.filter(is_read=False)
+        total_unread_message = unread_messages.count()
+        for chatroom in chatrooms:
+            total_unread_chatroom = unread_messages.filter(chatroom=chatroom).count()
+            sender_unread_count = unread_messages.filter(chatroom=chatroom, sender=user).count()
+            if sender_unread_count > 0:
+                if unread_messages.filter(chatroom=chatroom, sender=user)[0].sender == user:
+                    unread_count = total_unread_chatroom - sender_unread_count
+                    total_unread_message = total_unread_message - sender_unread_count
+            else:
+                unread_count = total_unread_chatroom
+            
+            response.append({
+                **ChatRoomSerializer(chatroom).data,
+                'unread_count': unread_count
+            })
+        
+        return Response({
+            "total_unread_messages": total_unread_message,
+            'chatrooms_details': response
+        }, status=status.HTTP_200_OK)
 
 
 
