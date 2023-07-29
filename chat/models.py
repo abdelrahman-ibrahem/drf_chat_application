@@ -18,7 +18,9 @@ class ChatRoom(models.Model):
     )
     online_users = models.ManyToManyField(
         User,
-        related_name='chatroom_online_users'
+        related_name='chatroom_online_users',
+        null=True,
+        blank=True
     )
     type = models.CharField(
         max_length=240,
