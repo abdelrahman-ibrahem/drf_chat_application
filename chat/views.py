@@ -8,6 +8,9 @@ from django.contrib.auth.models import User
 from chat.models import ChatRoom, Message
 from chat.serializers import ChatRoomSerializer, MessageSerializer
 from chat.utils.objects import ChatroomType, MessageType
+from chat.utils.generic import total_count_unread_messages, \
+      get_unread_count_messages_for_chatroom, get_unread_count_messages_group_for_chatroom
+
 
 class ListChatrooms(APIView):
     permission_classes = [IsAuthenticated]
@@ -19,19 +22,12 @@ class ListChatrooms(APIView):
         user = self.request.user
         unread_messages = Message.objects.filter(is_read=False)
         total_unread_message = unread_messages.count()
+
         for chatroom in chatrooms:
-            total_unread_chatroom = unread_messages.filter(chatroom=chatroom).count()
-            sender_unread_count = unread_messages.filter(chatroom=chatroom, sender=user).count()
-            if sender_unread_count > 0:
-                if unread_messages.filter(chatroom=chatroom, sender=user)[0].sender == user:
-                    unread_count = total_unread_chatroom - sender_unread_count
-                    total_unread_message = total_unread_message - sender_unread_count
-            else:
-                unread_count = total_unread_chatroom
-            
             response.append({
                 **ChatRoomSerializer(chatroom).data,
-                'unread_count': unread_count
+                'unread_count': get_unread_count_messages_for_chatroom(chatroom, user) \
+                    if chatroom.type == ChatroomType.SELF else get_unread_count_messages_group_for_chatroom(chatroom, user)
             })
         
         return Response({
@@ -42,7 +38,7 @@ class ListChatrooms(APIView):
 
 
 class RetreiveChatroom(RetrieveAPIView):
-    # permission_classes = (IsAuthenticated,)
+    permission_classes = (IsAuthenticated,)
     serializer_class = ChatRoomSerializer
     queryset = ChatRoom.objects.all()
     lookup_field = 'chat_room_id'
@@ -63,13 +59,27 @@ class RetreiveRoomMessages(ListAPIView):
 
 
     def get_queryset(self):
-        chatroom_id = self.kwargs['chat_room_id']
+        user = self.request.user
+        chatroom_id = self.kwargs['chatroom_id']
         chatroom = ChatRoom.objects.get(id=chatroom_id)
-        qs = Message.objects.filter(
-            sender=self.request.user,
-            chatroom=chatroom
-        )
-        return qs
+        messages = Message.objects.filter(chatroom=chatroom)
+        messages = messages.all().order_by('-created_at')
+        
+        if messages.count() > 0:
+            if chatroom.type == ChatroomType.SELF:
+                if user == messages[0].receiver:
+                    unread_messages = messages.filter(receiver=user, is_read=False)
+                    for message in unread_messages:
+                        message.is_read = True
+                        message.save()
+            else:
+                unread_messages = messages.filter(is_read=False)
+                for message in unread_messages:
+                    message.is_read = message.chatroom.online_users.filter(id=user.id).exists()
+                    message.save()
+            return messages
+        else:
+            return []
 
 class CreateChatroomView(APIView):
     permission_classes = [IsAuthenticated]
@@ -91,13 +101,12 @@ class CreateChatroomView(APIView):
             return Response(status=status.HTTP_409_CONFLICT)
 
 
-class SendMessage(APIView):
+class CreateSingleChatroom(APIView):
     permission_classes = [IsAuthenticated]
 
     def post(self, request):
         try:
             sender = self.request.user 
-            message = request.data.get('message')
             receiver_id = request.data.get('receiver_id')
             receiver = User.objects.get(id=receiver_id)
 
@@ -111,16 +120,8 @@ class SendMessage(APIView):
             chatroom.members.add(receiver)
             chatroom.save()
 
-            message = Message.objects.create(
-                chatroom=chatroom,
-                sender=sender,
-                receiver=receiver,
-                type=MessageType.TEXT,
-                content=message
-            )
             return Response({
-                'content': str(message),
-                'created_at' : message.created_at.strftime("%Y-%m-%d")
+                'chatroom_id': chatroom.id,
             }, status=status.HTTP_201_CREATED)
 
         except:
@@ -149,13 +150,6 @@ class SendChatroomImage(APIView):
         except Exception:
             return Response(status=status.HTTP_409_CONFLICT)
 
-
-class CreateRoomMessage(CreateAPIView):
-    queryset = Message.objects.all()
-    serializer_class = MessageSerializer
-    permission_classes = [
-        IsAuthenticated
-    ]
 
 class AddMemberToChatroom(APIView):
     permission_classes = [IsAuthenticated]

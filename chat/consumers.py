@@ -98,9 +98,10 @@ def get_receiver(receiver_id):
         return None
 
 @sync_to_async
-def get_receiver_from_chatroom(chatroom):
+def get_receiver_from_chatroom(chatroom_id, user):
     try:
-        return ChatRoom.objects.get(id=chatroom).owner
+        receiver = ChatRoom.objects.get(id=chatroom_id).members.exclude(id=user.id).first()
+        return receiver
     except ChatRoom.DoesNotExist:
         return None
 
@@ -187,7 +188,7 @@ class ChatConsumer(AsyncWebsocketConsumer):
         image_url = text_data_json['image_url']
 
         if self.chatroom.type == ChatroomType.SELF:
-            receiver = await get_receiver_from_chatroom(self.room_id)
+            receiver = await get_receiver_from_chatroom(self.room_id, self.user)
         
         # print(receiver)
         # date = text_data_json.get('date')
@@ -201,7 +202,7 @@ class ChatConsumer(AsyncWebsocketConsumer):
                             {
                                 'type': 'chat_message',
                                 'message': message,
-                                'date': created_message.created_at
+                                'date': date
                             }
                         )
                 elif message_type == MessageType.IMAGE:
@@ -225,7 +226,7 @@ class ChatConsumer(AsyncWebsocketConsumer):
                             {
                                 'type': 'chat_message',
                                 'message': message,
-                                'date': created_message.created_at
+                                'date': date
                             }
                         )
                 elif message_type == MessageType.IMAGE:
@@ -242,21 +243,21 @@ class ChatConsumer(AsyncWebsocketConsumer):
                     await async_reading_message(self.room_id, sender)
                 
     async def chat_message(self, event):
-        message = event['message']
-        date = event['date']
+        message = event.get('message')
+        date = event.get('date')
 
         await self.send(text_data=json.dumps({
-            'date': date,
             'message': message,
-            'type': MessageType.TEXT
+            'type': MessageType.TEXT,
+            'date': date
         }))
     
     async def image_chat(self, event):
-        message = event['image_url']
-        date = event['date']
-
+        image_url = event.get('image_url')
+        date = event.get('date')
+        
         await self.send(text_data=json.dumps({
-            'date': date,
-            'message': message,
-            'type': MessageType.IMAGE
+            'image_url': image_url,
+            'type': MessageType.IMAGE,
+            'date': date
         }))

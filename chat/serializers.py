@@ -4,7 +4,17 @@ from chat.models import ChatRoom, Message
 class ChatRoomSerializer(serializers.ModelSerializer):
     class Meta:
         model = ChatRoom
-        fields = '__all__'
+        fields = [
+            'id',
+            'name',
+            'owner',
+            'members',
+            'online_users',
+            'type',
+            'last_message',
+            'last_message_date',
+            'created_at'
+        ]
 
 
 class MessageSerializer(serializers.ModelSerializer):
