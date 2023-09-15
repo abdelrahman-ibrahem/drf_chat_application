@@ -9,7 +9,7 @@ from chat.models import ChatRoom, Message
 from chat.serializers import ChatRoomSerializer, MessageSerializer
 from chat.utils.objects import ChatroomType, MessageType
 from chat.utils.generic import total_count_unread_messages, \
-      get_unread_count_messages_for_chatroom, get_unread_count_messages_group_for_chatroom
+      get_unread_count_messages_for_chatroom, get_unread_count_messages_group_for_chatroom, read_messages
 
 
 class ListChatrooms(APIView):
@@ -47,7 +47,6 @@ class RetreiveChatroom(RetrieveAPIView):
     def get_queryset(self):
         try:
             qs = ChatRoom.objects.get(id=self.kwargs['chat_room_id'])
-            
             return qs
         except ChatRoom.DoesNotExist:
             return None
@@ -64,19 +63,10 @@ class RetreiveRoomMessages(ListAPIView):
         chatroom = ChatRoom.objects.get(id=chatroom_id)
         messages = Message.objects.filter(chatroom=chatroom)
         messages = messages.all().order_by('-created_at')
-        
+
+        # read messages
         if messages.count() > 0:
-            if chatroom.type == ChatroomType.SELF:
-                if user == messages[0].receiver:
-                    unread_messages = messages.filter(receiver=user, is_read=False)
-                    for message in unread_messages:
-                        message.is_read = True
-                        message.save()
-            else:
-                unread_messages = messages.filter(is_read=False)
-                for message in unread_messages:
-                    message.is_read = message.chatroom.online_users.filter(id=user.id).exists()
-                    message.save()
+            read_messages(chatroom, user)
             return messages
         else:
             return []

@@ -3,7 +3,7 @@ from asgiref.sync import sync_to_async
 from rest_framework.authtoken.models import Token 
 from channels.generic.websocket import AsyncWebsocketConsumer
 from django.contrib.auth.models import User
-from chat.models import Message, ChatRoom
+from chat.models import Message, ChatRoom, UnreadMessage
 from chat.utils.objects import ChatroomType, MessageType
 from chat.serializers import MessageSerializer
 
@@ -32,13 +32,25 @@ def save_message(chatroom, message, message_type, sender,receiver=None):
     chatroom = ChatRoom.objects.get(id=chatroom)
     if receiver:
         if message_type == MessageType.TEXT:
-            message = Message.objects.create(sender=sender, chatroom=chatroom, content=message, type=MessageType.TEXT, receiver=receiver)
+            created_message = Message.objects.create(sender=sender, chatroom=chatroom, content=message, type=MessageType.TEXT, receiver=receiver)
+            unread_message = UnreadMessage.objects.create(
+                chatroom=chatroom,
+                message=created_message,
+                sender=sender,
+                receiver=receiver
+            )
     else:
         if message_type == MessageType.TEXT:
-            message = Message.objects.create(sender=sender, chatroom=chatroom, type=MessageType.TEXT, content=message)
-    
+            created_message = Message.objects.create(sender=sender, chatroom=chatroom, type=MessageType.TEXT, content=message)
+            for member in chatroom.members.exclude(id=sender.id):
+                unread_message = UnreadMessage.objects.create(
+                    chatroom=chatroom,
+                    message=created_message,
+                    sender=sender,
+                    receiver=member
+                )
     if message_type == MessageType.TEXT:
-        return message
+        return created_message
     
 @sync_to_async
 def last_50_message(chatroom):
@@ -59,12 +71,15 @@ def last_50_message(chatroom):
 def async_reading_message(chatroom_id, user):
     chatroom = ChatRoom.objects.get(id=chatroom_id)
     if chatroom.type == ChatroomType.SELF:
-        messages = Message.objects.filter(receiver=user, chatroom=chatroom)
+        # messages = Message.objects.filter(receiver=user, chatroom=chatroom)
+        messages = chatroom.chatroom_unread.filter(receiver=user, is_read=False)
         for message in messages:
             message.is_read = True
             message.save()
     else:
-        unread_messages = Message.objects.filter(is_read=False, chatroom=chatroom)
+        # unread_messages = Message.objects.filter(is_read=False, chatroom=chatroom)
+        unread_messages = chatroom.chatroom_unread.filter(receiver=user, is_read=False)
+
         for message in unread_messages:
             message.is_read = message.chatroom.online_users.filter(id=user.id).exists()
             message.save()
@@ -196,7 +211,8 @@ class ChatConsumer(AsyncWebsocketConsumer):
         if self.chatroom.type == ChatroomType.SELF:
             if sender is not None:
                 if message_type == MessageType.TEXT:
-                    created_message = await save_message(self.room_id, message, sender, MessageType.TEXT, receiver)
+                    # (chatroom, message, message_type, sender, receiver=None):
+                    created_message = await save_message(self.room_id, message, MessageType.TEXT, sender, receiver)
                     await self.channel_layer.group_send(
                             self.room_group_name,
                             {
@@ -206,7 +222,7 @@ class ChatConsumer(AsyncWebsocketConsumer):
                             }
                         )
                 elif message_type == MessageType.IMAGE:
-                    await save_message(self.room_id, image_url, sender, MessageType.TEXT, receiver)
+                    await save_message(self.room_id, image_url, MessageType.IMAGE, sender, receiver)
                     await self.channel_layer.group_send(
                             self.room_group_name,
                             {
@@ -220,7 +236,7 @@ class ChatConsumer(AsyncWebsocketConsumer):
         elif self.chatroom.type == ChatroomType.GROUP:
             if sender is not None:
                 if message_type == MessageType.TEXT:
-                    created_message = await save_message(self.room_id, message, sender, MessageType.TEXT)
+                    created_message = await save_message(self.room_id, message, MessageType.TEXT,sender)
                     await self.channel_layer.group_send(
                             self.room_group_name,
                             {
@@ -230,7 +246,7 @@ class ChatConsumer(AsyncWebsocketConsumer):
                             }
                         )
                 elif message_type == MessageType.IMAGE:
-                    await save_message(self.room_id, image_url, sender, MessageType.TEXT)
+                    await save_message(self.room_id, image_url, MessageType.IMAGE,sender)
                     await self.channel_layer.group_send(
                             self.room_group_name,
                             {

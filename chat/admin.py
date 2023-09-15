@@ -1,8 +1,11 @@
 from django.contrib import admin
-from chat.models import ChatRoom, Message
+from chat.models import ChatRoom, Message, UnreadMessage
 
 class ChatMessageInline(admin.TabularInline):
     model = Message
+
+class UnreadMessageInline(admin.TabularInline):
+    model = UnreadMessage
 
 class ChatroomAdminView(admin.ModelAdmin):
     list_display = [
@@ -14,8 +17,10 @@ class ChatroomAdminView(admin.ModelAdmin):
         'created_at',
     ]
     inlines = [
-        ChatMessageInline
+        ChatMessageInline,
+        UnreadMessageInline
     ]
 
 admin.site.register(Message)
 admin.site.register(ChatRoom, ChatroomAdminView)
+admin.site.register(UnreadMessage)

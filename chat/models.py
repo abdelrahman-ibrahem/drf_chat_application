@@ -39,6 +39,20 @@ class ChatRoom(models.Model):
     created_at = models.DateTimeField(
         auto_now_add=True
     )
+    sender = models.ForeignKey(
+        User,
+        on_delete=models.CASCADE,
+        related_name='chatroom_sender',
+        null=True,
+        blank=True
+    )
+    receiver = models.ForeignKey(
+        User,
+        on_delete=models.CASCADE,
+        related_name='chatroom_receiver',
+        null=True,
+        blank=True
+    )
 
     def get_online_users_count(self):
         return self.online_users.count()
@@ -54,7 +68,9 @@ class Message(models.Model):
     sender = models.ForeignKey(
         User,
         related_name='sender',
-        on_delete=models.CASCADE
+        on_delete=models.CASCADE,
+        null=True,
+        blank=True
     )
     receiver = models.ForeignKey(
         User,
@@ -84,3 +100,35 @@ class Message(models.Model):
         auto_now_add=True
     )
 
+
+class UnreadMessage(models.Model):
+    chatroom = models.ForeignKey(
+        ChatRoom,
+        on_delete=models.CASCADE,
+        related_name='chatroom_unread'
+    )
+    message = models.ForeignKey(
+        Message,
+        on_delete=models.CASCADE,
+        related_name='messafe_unread'
+    )
+    sender = models.ForeignKey(
+        User,
+        on_delete=models.CASCADE,
+        related_name='sender_unread',
+        null=True,
+        blank=True
+    )
+    receiver = models.ForeignKey(
+        User,
+        on_delete=models.CASCADE,
+        related_name='receiver_unread',
+        null=True,
+        blank=True
+    )
+    is_read = models.BooleanField(
+        default=False
+    )
+    creation_date = models.DateTimeField(
+        auto_now_add=True
+    )
